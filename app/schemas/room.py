@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class RoomCreateRequest(BaseModel):
+class RoomCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=2000)
 
 
-class RoomOut(BaseModel):
+class RoomResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
     name: str
-    owner_id: int
-    created_at: datetime
+    description: str | None
+    online_count: int
+
 

@@ -1,15 +1,16 @@
 from app.schemas.auth import Token, UserCreate, UserMeResponse, UserResponse
-from app.schemas.message import MessageCreateRequest, MessageOut
-from app.schemas.room import RoomCreateRequest, RoomOut
+from app.schemas.message import MessageCreate, MessageResponse, WsMessage
+from app.schemas.room import RoomCreate, RoomResponse
 
 __all__ = [
     "Token",
     "UserCreate",
     "UserResponse",
     "UserMeResponse",
-    "RoomCreateRequest",
-    "RoomOut",
-    "MessageCreateRequest",
-    "MessageOut",
+    "RoomCreate",
+    "RoomResponse",
+    "MessageCreate",
+    "MessageResponse",
+    "WsMessage",
 ]
 

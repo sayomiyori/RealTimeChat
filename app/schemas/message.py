@@ -1,20 +1,23 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class MessageCreateRequest(BaseModel):
-    content: str = Field(min_length=1, max_length=4000)
+class MessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
 
 
-class MessageOut(BaseModel):
+class MessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    room_id: int
-    user_id: int
+    id: UUID
     content: str
+    username: str
+    room_id: UUID
     created_at: datetime
 
 
