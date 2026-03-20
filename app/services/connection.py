@@ -54,7 +54,7 @@ class ConnectionManager:
                 await conn.send_text(message)
             except WebSocketDisconnect:
                 to_remove.append(conn)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("WebSocket broadcast failed: room_id=%s", room_id)
                 to_remove.append(conn)
 

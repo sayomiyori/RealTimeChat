@@ -1,7 +1,5 @@
 """init: create users, rooms, messages tables"""
 
-from alembic import op
-import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.

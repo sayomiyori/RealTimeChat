@@ -31,8 +31,8 @@ class Message(Base):
         nullable=False,
     )
 
-    room: Mapped["Room"] = relationship(back_populates="messages", lazy="joined")
-    user: Mapped["User"] = relationship(back_populates="messages", lazy="joined")
+    room: Mapped[Room] = relationship(back_populates="messages", lazy="joined")
+    user: Mapped[User] = relationship(back_populates="messages", lazy="joined")
 
     def to_dict(self) -> dict[str, object]:
         username = self.user.username if self.user is not None else None
@@ -53,7 +53,7 @@ class Message(Base):
         room_id: uuid.UUID,
         user_id: uuid.UUID,
         content: str,
-    ) -> "Message":
+    ) -> Message:
         """Create and persist a message using AsyncSession."""
         message = cls(room_id=room_id, user_id=user_id, content=content)
         session.add(message)

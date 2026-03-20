@@ -3,5 +3,5 @@ from app.models.message import Message
 from app.models.room import Room
 from app.models.user import User
 
-__all__ = ["Base", "User", "Room", "Message"]
+__all__ = ["Base", "Message", "Room", "User"]
 

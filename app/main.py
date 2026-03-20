@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.core.config import settings
 from app.routers import auth_router, chat_router
 from app.services.redis import close_redis, get_redis
 

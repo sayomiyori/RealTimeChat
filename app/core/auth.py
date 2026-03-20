@@ -1,7 +1,7 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -30,7 +30,7 @@ async def verify_password(password: str, password_hash: str) -> bool:
 
 async def create_access_token(data: dict[str, Any]) -> str:
     """Create JWT access token (HS256) with expiry from settings."""
-    expire_at = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire_at = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload: dict[str, Any] = dict(data)
     # Keep compatibility with common JWT patterns ("sub") and our WS router.
     if "user_id" in payload and "sub" not in payload:
@@ -54,7 +54,7 @@ async def get_current_user(token: str, db: AsyncSession) -> User:
         if user_id_value is None:
             raise ValueError("Missing token user_id")
         user_id = uuid.UUID(str(user_id_value))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("JWT validation failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -81,12 +81,12 @@ async def get_current_user_ws(token: str, db: AsyncSession) -> User | None:
 
 
 __all__ = [
-    "oauth2_scheme",
-    "hash_password",
-    "verify_password",
     "create_access_token",
     "decode_access_token",
     "get_current_user",
     "get_current_user_ws",
+    "hash_password",
+    "oauth2_scheme",
+    "verify_password",
 ]
 

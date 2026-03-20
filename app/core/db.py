@@ -1,4 +1,4 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -20,5 +20,5 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-__all__ = ["Base", "engine", "async_session_maker", "target_metadata", "get_db"]
+__all__ = ["Base", "async_session_maker", "engine", "get_db", "target_metadata"]
 

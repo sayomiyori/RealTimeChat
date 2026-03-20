@@ -58,5 +58,5 @@ async def close_redis() -> None:
         _redis_client = None
 
 
-__all__ = ["get_redis", "publish", "subscribe", "close_redis"]
+__all__ = ["close_redis", "get_redis", "publish", "subscribe"]
 

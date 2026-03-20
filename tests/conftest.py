@@ -1,26 +1,23 @@
 from __future__ import annotations
 
+# ---------------------------------------------------------------------------
+# Rewrite DATABASE_URL to point at a *_test database BEFORE any app import.
+# ---------------------------------------------------------------------------
+import importlib
 import os
-from typing import AsyncGenerator, Generator
-from urllib.parse import urlparse, urlunparse
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock
+from urllib.parse import urlparse, urlunparse
 
 import anyio
-
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.models.base import Base
-
-
-# ---------------------------------------------------------------------------
-# Rewrite DATABASE_URL to point at a *_test database BEFORE any app import.
-# ---------------------------------------------------------------------------
-import importlib
 import app.core.config as config_mod
+from app.models.base import Base
 
 _base_db_url = config_mod.settings.DATABASE_URL
 _parsed = urlparse(_base_db_url)
@@ -30,8 +27,8 @@ os.environ["DATABASE_URL"] = _test_db_url
 importlib.reload(config_mod)
 
 import app.core.db as db_mod  # noqa: E402
-from app.main import app as fastapi_app  # noqa: E402
 from app.core.config import settings  # noqa: E402
+from app.main import app as fastapi_app  # noqa: E402
 
 
 def _raw_pg_url(sa_url: str) -> str:
@@ -154,7 +151,11 @@ async def test_user(app: FastAPI) -> dict[str, object]:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        payload = {"username": "testuser", "email": "testuser@example.com", "password": "password123"}
+        payload = {
+            "username": "testuser",
+            "email": "testuser@example.com",
+            "password": "password123",
+        }
         resp = await client.post("/auth/register", json=payload)
         assert resp.status_code == 201, resp.text
 
@@ -195,6 +196,7 @@ async def test_room(async_client: AsyncClient, auth_headers: dict[str, str]) -> 
 @pytest.fixture(autouse=True)
 def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     import asyncio
+
     import app.main as main_mod
     import app.routers.chat as chat_mod
 
@@ -221,5 +223,5 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
 @pytest.fixture(autouse=True)
 def clear_connection_manager() -> Generator[None, None, None]:
     from app.services.connection import manager as connection_manager
-    connection_manager._connections.clear()  # noqa: SLF001
+    connection_manager._connections.clear()
     yield

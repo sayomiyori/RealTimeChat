@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class RoomCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = Field(default=None, max_length=2000)
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class RoomResponse(BaseModel):

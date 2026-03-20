@@ -17,7 +17,7 @@ class Room(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    messages: Mapped[list["Message"]] = relationship(
+    messages: Mapped[list[Message]] = relationship(
         back_populates="room",
         lazy="selectin",
         cascade="all, delete-orphan",

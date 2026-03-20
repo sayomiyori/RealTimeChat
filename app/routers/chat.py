@@ -6,10 +6,9 @@ from uuid import UUID
 
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from pydantic import ValidationError
 
 from app.core.auth import get_current_user, get_current_user_ws, oauth2_scheme
 from app.core.db import get_db
@@ -28,7 +27,7 @@ router = APIRouter(tags=["chat"])
 
 async def get_current_user_dep(
     token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ) -> User:
     # Wrapper because `get_current_user(token, db)` doesn't embed FastAPI Depends defaults.
     return await get_current_user(token=token, db=db)
@@ -48,8 +47,8 @@ def _message_to_dict(message: Message) -> dict[str, Any]:
 @router.post("/rooms", response_model=RoomResponse)
 async def create_room(
     payload: RoomCreate,
-    session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),  # noqa: B008
+    current_user: User = Depends(get_current_user_dep),  # noqa: B008
 ) -> RoomResponse:
     _ = current_user  # room creation is protected by JWT
 
@@ -63,13 +62,18 @@ async def create_room(
     await session.refresh(room)
 
     online_count = manager.get_room_count(str(room.id))
-    return RoomResponse(id=room.id, name=room.name, description=room.description, online_count=online_count)
+    return RoomResponse(
+        id=room.id,
+        name=room.name,
+        description=room.description,
+        online_count=online_count,
+    )
 
 
 @router.get("/rooms", response_model=list[RoomResponse])
 async def list_rooms(
-    session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),  # noqa: B008
+    current_user: User = Depends(get_current_user_dep),  # noqa: B008
 ) -> list[RoomResponse]:
     _ = current_user  # list is protected by JWT
 
@@ -92,8 +96,8 @@ async def room_history(
     room_id: UUID,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),  # noqa: B008
+    current_user: User = Depends(get_current_user_dep),  # noqa: B008
 ) -> list[MessageResponse]:
     _ = current_user  # history is protected by JWT
 
@@ -129,7 +133,7 @@ async def websocket_room(
     websocket: WebSocket,
     room_id: UUID,
     token: str = Query(..., description="JWT access token"),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db),  # noqa: B008
 ) -> None:
     """WebSocket chat for a room.
 
@@ -160,7 +164,10 @@ async def websocket_room(
     history_result = await session.execute(history_stmt)
     history_messages_desc = history_result.scalars().all()
     history_messages_asc = list(reversed(history_messages_desc))
-    history_payload = {"type": "history", "messages": [_message_to_dict(m) for m in history_messages_asc]}
+    history_payload = {
+        "type": "history",
+        "messages": [_message_to_dict(m) for m in history_messages_asc],
+    }
     await websocket.send_text(json.dumps(history_payload, ensure_ascii=True))
 
     pubsub = await subscribe(room_id_str)
@@ -189,7 +196,10 @@ async def websocket_room(
                 msg_type = payload.get("type")
                 if msg_type == "message":
                     msg_data = payload.get("data")
-                    if isinstance(msg_data, dict) and msg_data.get("user_id") == current_user_id_str:
+                    if (
+                        isinstance(msg_data, dict)
+                        and msg_data.get("user_id") == current_user_id_str
+                    ):
                         # Avoid duplicating sender echo.
                         continue
                 try:
@@ -222,7 +232,9 @@ async def websocket_room(
 
             if msg_type == "message":
                 data_part = incoming.get("data")
-                data_for_validation: dict[str, Any] = data_part if isinstance(data_part, dict) else incoming
+                data_for_validation: dict[str, Any] = (
+                    data_part if isinstance(data_part, dict) else incoming
+                )
                 try:
                     msg_in = MessageCreate.model_validate(data_for_validation)
                 except ValidationError as exc:
@@ -263,7 +275,7 @@ async def websocket_room(
 
     except WebSocketDisconnect:
         pass
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("WebSocket chat handler error")
     finally:
         # Shield cleanup from anyio task cancellation so that the asyncpg
@@ -276,7 +288,7 @@ async def websocket_room(
                 await redis_task
             except (asyncio.CancelledError, WebSocketDisconnect):
                 pass
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("Redis listener task failed during cleanup")
 
             await manager.disconnect(websocket, room_id_str)
@@ -288,7 +300,7 @@ async def websocket_room(
 
             try:
                 await pubsub.unsubscribe()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
             await session.close()

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, String
@@ -20,7 +19,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    messages: Mapped[list["Message"]] = relationship(back_populates="user", lazy="selectin")
+    messages: Mapped[list[Message]] = relationship(back_populates="user", lazy="selectin")
 
     def to_dict(self) -> dict[str, object]:
         return {
