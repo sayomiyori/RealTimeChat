@@ -1,11 +1,11 @@
-import asyncio
 import os
 import sys
+import asyncio
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 # Alembic загружает env.py так, что корень проекта может не попадать в sys.path.
 # Явно добавляем его, чтобы `import app...` всегда работал в контейнере.
@@ -50,16 +50,20 @@ def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
 
 async def run_migrations_online() -> None:
     """Run migrations in 'online' mode using async SQLAlchemy engine."""
-    connectable = create_async_engine(settings.DATABASE_URL, poolclass=pool.NullPool)
+    connectable: AsyncEngine = create_async_engine(settings.DATABASE_URL, poolclass=pool.NullPool)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()
 
+async def run_async_migrations() -> None:
+    """Alembic async migrations entrypoint (required by project rules)."""
+    await run_migrations_online()
+
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    asyncio.run(run_async_migrations())
 
