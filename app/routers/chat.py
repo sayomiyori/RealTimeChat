@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import decode_access_token, get_current_user
+from app.core.auth import decode_access_token, get_current_user, oauth2_scheme
 from app.core.db import async_session_maker, get_db
 from app.models.message import Message
 from app.models.room import Room
@@ -25,8 +25,9 @@ manager = ConnectionManager()
 async def create_room(
     payload: RoomCreateRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    token: str = Depends(oauth2_scheme),
 ) -> RoomOut:
+    current_user = await get_current_user(token=token, db=session)
     existing = await session.execute(select(Room).where(Room.name == payload.name))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Room already exists")
