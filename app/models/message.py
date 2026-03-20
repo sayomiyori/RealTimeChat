@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text
+from sqlalchemy import ForeignKey, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -16,16 +17,30 @@ if TYPE_CHECKING:
 class Message(Base):
     __tablename__ = "messages"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("rooms.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
 
-    room: Mapped["Room"] = relationship(back_populates="messages", lazy="selectin")
-    user: Mapped["User"] = relationship(back_populates="messages", lazy="selectin")
+    room: Mapped["Room"] = relationship(back_populates="messages", lazy="joined")
+    user: Mapped["User"] = relationship(back_populates="messages", lazy="joined")
+
+    def to_dict(self) -> dict[str, object]:
+        username = self.user.username if self.user is not None else None
+        return {
+            "id": str(self.id),
+            "content": self.content,
+            "room_id": str(self.room_id),
+            "user_id": str(self.user_id),
+            "created_at": self.created_at.isoformat(),
+            "username": username,
+        }
 
