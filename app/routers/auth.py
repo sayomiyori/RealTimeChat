@@ -35,7 +35,7 @@ async def register(
 ) -> UserResponse:
     existing_username = await session.execute(select(User).where(User.username == payload.username))
     if existing_username.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
 
     existing_email = await session.execute(select(User).where(User.email == payload.email))
     if existing_email.scalar_one_or_none() is not None:

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -43,4 +44,20 @@ class Message(Base):
             "created_at": self.created_at.isoformat(),
             "username": username,
         }
+
+    @classmethod
+    async def create(
+        cls,
+        *,
+        session: AsyncSession,
+        room_id: uuid.UUID,
+        user_id: uuid.UUID,
+        content: str,
+    ) -> "Message":
+        """Create and persist a message using AsyncSession."""
+        message = cls(room_id=room_id, user_id=user_id, content=content)
+        session.add(message)
+        await session.commit()
+        await session.refresh(message)
+        return message
 

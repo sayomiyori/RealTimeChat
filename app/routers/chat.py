@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Any
@@ -7,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import decode_access_token, get_current_user, oauth2_scheme
+from pydantic import ValidationError
+
+from app.core.auth import get_current_user, get_current_user_ws, oauth2_scheme
 from app.core.db import async_session_maker, get_db
 from app.models.message import Message
 from app.models.room import Room
@@ -15,11 +18,11 @@ from app.models.user import User
 from app.schemas.message import MessageCreate, MessageResponse
 from app.schemas.room import RoomCreate, RoomResponse
 from app.services.connection import manager
-from app.services.redis import publish
+from app.services.redis import publish, subscribe
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(tags=["chat"])
 
 
 async def get_current_user_dep(
@@ -120,65 +123,164 @@ async def room_history(
     ]
 
 
-@router.websocket("/ws/rooms/{room_id}")
+@router.websocket("/ws/{room_id}")
 async def websocket_room(
     websocket: WebSocket,
     room_id: UUID,
+    token: str = Query(..., description="JWT access token"),
 ) -> None:
-    # Auth for WS: pass `Authorization: Bearer <token>` header.
-    auth_header = websocket.headers.get("Authorization")
-    if auth_header is None or not auth_header.lower().startswith("bearer "):
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+    """WebSocket chat for a room.
 
-    token = auth_header.split(" ", 1)[1].strip()
-    try:
-        payload: dict[str, Any] = await decode_access_token(token)
-        user_id_value = payload.get("user_id") or payload.get("sub")
-        if user_id_value is None:
-            raise ValueError("Missing token subject")
-        user_id = UUID(str(user_id_value))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("WS auth failed: %s", exc)
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+    Token is accepted as query parameter: `?token=...`.
+    """
 
     room_id_str = str(room_id)
 
     async with async_session_maker() as session:
-        room_result = await session.execute(select(Room).where(Room.id == room_id))
-        room = room_result.scalar_one_or_none()
-        if room is None:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        current_user = await get_current_user_ws(token=token, db=session)
+        if current_user is None:
+            await websocket.close(code=4001)
             return
 
-        user_result = await session.execute(select(User).where(User.id == user_id))
-        user = user_result.scalar_one_or_none()
-        if user is None:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        room_result = await session.execute(select(Room).where(Room.id == room_id))
+        if room_result.scalar_one_or_none() is None:
+            await websocket.close(code=4004)
             return
 
         await manager.connect(websocket, room_id_str)
+
+        # Load last 50 messages and send as WS history.
+        history_stmt = (
+            select(Message)
+            .where(Message.room_id == room_id)
+            .order_by(Message.created_at.desc())
+            .limit(50)
+        )
+        history_result = await session.execute(history_stmt)
+        history_messages_desc = history_result.scalars().all()
+        history_messages_asc = list(reversed(history_messages_desc))
+        history_payload = {"type": "history", "messages": [_message_to_dict(m) for m in history_messages_asc]}
+        await websocket.send_text(json.dumps(history_payload, ensure_ascii=True))
+
+        pubsub = await subscribe(room_id_str)
+
+        current_user_id_str = str(current_user.id)
+
+        async def redis_listener() -> None:
+            try:
+                while True:
+                    redis_msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                    if redis_msg is None:
+                        continue
+
+                    data = redis_msg.get("data")
+                    if data is None:
+                        continue
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8", errors="replace")
+
+                    try:
+                        payload = json.loads(data)
+                    except json.JSONDecodeError:
+                        logger.warning("Redis pubsub payload is not JSON: %s", data)
+                        continue
+
+                    msg_type = payload.get("type")
+                    if msg_type == "message":
+                        msg_data = payload.get("data")
+                        if isinstance(msg_data, dict) and msg_data.get("user_id") == current_user_id_str:
+                            # Avoid duplicating sender echo.
+                            continue
+                    try:
+                        await websocket.send_text(data)
+                    except WebSocketDisconnect:
+                        return
+                    except RuntimeError:
+                        # Connection might be closing.
+                        return
+            except asyncio.CancelledError:
+                return
+
+        redis_task = asyncio.create_task(redis_listener())
+
+        # Announce join.
+        await publish(
+            room_id_str,
+            {"type": "system", "content": f"{current_user.username} вошёл в чат"},
+        )
+
         try:
             while True:
-                incoming = await websocket.receive_json()
-                msg_in = MessageCreate.model_validate(incoming)
+                raw = await websocket.receive_text()
+                try:
+                    incoming = json.loads(raw)
+                    msg_type = incoming.get("type")
+                except json.JSONDecodeError:
+                    logger.warning("WS message JSON decode error: %s", raw)
+                    continue
 
-                message = Message(room_id=room_id, user_id=user.id, content=msg_in.content)
-                session.add(message)
-                await session.commit()
-                await session.refresh(message)
+                if msg_type == "message":
+                    data_part = incoming.get("data")
+                    data_for_validation: dict[str, Any] = data_part if isinstance(data_part, dict) else incoming
+                    try:
+                        msg_in = MessageCreate.model_validate(data_for_validation)
+                    except ValidationError as exc:
+                        logger.warning("WS message validation error: %s", exc)
+                        continue
 
-                message_dict = _message_to_dict(message)
-                message_text = json.dumps(message_dict, ensure_ascii=True)
-                await manager.broadcast(message_text, room_id_str)
-                await publish(room_id_str, {"type": "message", "data": message_dict})
+                    created_message = await Message.create(
+                        session=session,
+                        room_id=room_id,
+                        user_id=current_user.id,
+                        content=msg_in.content,
+                    )
+
+                    message_dict = _message_to_dict(created_message)
+                    message_dict["username"] = current_user.username
+                    message_dict["user_id"] = current_user_id_str  # for skip logic in listener
+
+                    redis_payload = {"type": "message", "data": message_dict}
+                    await publish(room_id_str, redis_payload)
+                    await websocket.send_text(json.dumps(redis_payload, ensure_ascii=True))
+
+                elif msg_type == "typing":
+                    data_part = incoming.get("data")
+                    typing_data: dict[str, Any] = data_part if isinstance(data_part, dict) else incoming
+                    is_typing = bool(typing_data.get("is_typing"))
+                    await publish(
+                        room_id_str,
+                        {"type": "typing", "username": current_user.username, "is_typing": is_typing},
+                    )
+                else:
+                    # Unknown message type - ignore.
+                    continue
+
         except WebSocketDisconnect:
-            await manager.disconnect(websocket, room_id_str)
+            pass
         except Exception:  # noqa: BLE001
-            logger.exception("WebSocket room handler error")
+            logger.exception("WebSocket chat handler error")
+        finally:
+            # Cleanup.
+            redis_task.cancel()
+            try:
+                await redis_task
+            except (asyncio.CancelledError, WebSocketDisconnect):
+                pass
+            except Exception:  # noqa: BLE001
+                logger.exception("Redis listener task failed during cleanup")
+
             await manager.disconnect(websocket, room_id_str)
-            await websocket.close()
+
+            await publish(
+                room_id_str,
+                {"type": "system", "content": f"{current_user.username} вышел из чата"},
+            )
+
+            try:
+                await pubsub.unsubscribe()
+            except Exception:  # noqa: BLE001
+                pass
+
 
 
 __all__ = ["router"]
