@@ -50,19 +50,48 @@ def app() -> FastAPI:
 
 @pytest.fixture(scope="session")
 async def _ensure_test_db() -> AsyncGenerator[None, None]:
+    import asyncio
+    import socket
+
     import asyncpg
 
     parsed = urlparse(_raw_pg_url(settings.DATABASE_URL))
     db_name = (parsed.path or "").lstrip("/")
     admin_url = urlunparse(parsed._replace(path="/postgres"))
 
-    conn = await asyncpg.connect(admin_url)
-    try:
-        await conn.execute(f'CREATE DATABASE "{db_name}"')
-    except asyncpg.exceptions.DuplicateDatabaseError:
+    # In CI, the Postgres service might not be ready yet when fixtures start.
+    # Retry connection + CREATE DATABASE to avoid flaky DNS/connection failures.
+    attempts = 20
+    delay_s = 1.0
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            conn = await asyncpg.connect(admin_url)
+            try:
+                await conn.execute(f'CREATE DATABASE "{db_name}"')
+            except asyncpg.exceptions.DuplicateDatabaseError:
+                pass
+            finally:
+                await conn.close()
+            break
+        except (
+            asyncpg.exceptions.CannotConnectNowError,
+            asyncpg.exceptions.PostgresConnectionError,
+            asyncpg.exceptions.ClientCannotConnectError,
+            asyncpg.exceptions.ConnectionDoesNotExistError,
+            asyncpg.exceptions.ConnectionFailureError,
+            socket.gaierror,
+            OSError,
+        ) as exc:
+            last_exc = exc
+            if attempt == attempts:
+                raise
+            await asyncio.sleep(delay_s)
+            delay_s = min(delay_s * 2, 6.0)
+    if last_exc is not None:
+        # Should be unreachable because we raise on last attempt,
+        # but keep the variable "used" for type-checkers.
         pass
-    finally:
-        await conn.close()
 
     yield
 
