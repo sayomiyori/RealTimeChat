@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -12,13 +13,12 @@ from app.models.room import Room
 from app.models.user import User
 from app.schemas.message import MessageCreateRequest, MessageOut
 from app.schemas.room import RoomCreateRequest, RoomOut
-from app.services.connection import ConnectionManager
-from app.services.redis import publish_room_event
+from app.services.connection import manager
+from app.services.redis import publish
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-manager = ConnectionManager()
 
 
 @router.post("/rooms", response_model=RoomOut)
@@ -74,6 +74,8 @@ async def websocket_room(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    room_id_str = str(room_id)
+
     async with async_session_maker() as session:
         room_result = await session.execute(select(Room).where(Room.id == room_id))
         room = room_result.scalar_one_or_none()
@@ -87,7 +89,7 @@ async def websocket_room(
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
-        await manager.connect(room_id, websocket)
+        await manager.connect(websocket, room_id_str)
         try:
             while True:
                 incoming = await websocket.receive_json()
@@ -99,13 +101,14 @@ async def websocket_room(
                 await session.refresh(message)
 
                 msg_out = MessageOut.model_validate(message)
-                await manager.broadcast(room_id, msg_out.model_dump())
-                await publish_room_event(room_id, {"type": "message", "data": msg_out.model_dump()})
+                message_text = json.dumps(msg_out.model_dump(), ensure_ascii=True)
+                await manager.broadcast(message_text, room_id_str)
+                await publish(room_id_str, {"type": "message", "data": msg_out.model_dump()})
         except WebSocketDisconnect:
-            await manager.disconnect(room_id, websocket)
+            await manager.disconnect(websocket, room_id_str)
         except Exception:  # noqa: BLE001
             logger.exception("WebSocket room handler error")
-            await manager.disconnect(room_id, websocket)
+            await manager.disconnect(websocket, room_id_str)
             await websocket.close()
 
 

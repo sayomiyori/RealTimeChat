@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from app.core.config import settings
 from app.routers import auth_router, chat_router
-from app.services.redis import close_redis, init_redis
+from app.services.redis import close_redis, get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> None:
     logger.info("Starting realtime-chat app")
-    await init_redis(settings.REDIS_URL)
+    await get_redis()
     yield
     logger.info("Stopping realtime-chat app")
     await close_redis()
