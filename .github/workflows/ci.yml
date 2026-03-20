@@ -35,8 +35,8 @@ jobs:
           - 6379:6379
 
     env:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/realtime_chat
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/realtime_chat
+      REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: ci_secret_key
 
     steps:
