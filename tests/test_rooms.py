@@ -35,3 +35,19 @@ async def test_get_room_history_empty(
     assert resp.status_code == HTTPStatus.OK
     assert resp.json() == []
 
+
+async def test_create_room_duplicate(async_client: AsyncClient, auth_headers: dict[str, str]) -> None:
+    first = await async_client.post(
+        "/rooms",
+        json={"name": "duplicate-room", "description": "desc"},
+        headers=auth_headers,
+    )
+    assert first.status_code in (HTTPStatus.OK, HTTPStatus.CREATED), first.text
+
+    second = await async_client.post(
+        "/rooms",
+        json={"name": "duplicate-room", "description": "desc2"},
+        headers=auth_headers,
+    )
+    assert second.status_code == HTTPStatus.CONFLICT, second.text
+
