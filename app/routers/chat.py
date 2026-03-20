@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import decode_access_token
+from app.core.auth import decode_access_token, get_current_user
 from app.core.db import async_session_maker, get_db
 from app.models.message import Message
 from app.models.room import Room

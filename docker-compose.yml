@@ -1,10 +1,8 @@
-version: "3.9"
-
 services:
   api:
     build: .
     ports:
-      - "8000:8000"
+      - "8010:8000"
     env_file:
       - .env
     depends_on:
@@ -17,11 +15,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: realtime_chat
-    ports:
-      - "5432:5432"
+    # Host port mapping is intentionally omitted to avoid conflicts
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Host port mapping is intentionally omitted to avoid conflicts
+    # with other local docker-compose stacks using :6379.
 

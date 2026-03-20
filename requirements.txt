@@ -13,4 +13,5 @@ pytest-asyncio
 pytest-cov
 anyio
 ruff
+python-multipart
 
